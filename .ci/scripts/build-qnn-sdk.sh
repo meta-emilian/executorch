@@ -18,8 +18,10 @@ build_qnn_backend() {
 
 set_up_aot() {
   cd $EXECUTORCH_ROOT
-  mkdir cmake-out-android
-  pushd cmake-out-android
+  if [ ! -d "cmake-out" ]; then
+      mkdir cmake-out
+  fi
+  pushd cmake-out
   cmake .. \
       -DCMAKE_INSTALL_PREFIX=$PWD \
       -DEXECUTORCH_BUILD_QNN=ON \
