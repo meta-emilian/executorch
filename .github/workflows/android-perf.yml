@@ -135,24 +135,75 @@ jobs:
       fail-fast: false
     with:
       runner: linux.2xlarge
-      docker-image: executorch-ubuntu-22.04-clang12
+      docker-image: executorch-ubuntu-22.04-clang12-android
       submodules: 'true'
       timeout: 60
       upload-artifact: android-models
       script: |
         # The generic Linux job chooses to use base env, not the one setup by the image
+        echo "::group::Setting up dev environment"
+        CONDA_ENV=$(conda env list --json | jq -r ".envs | .[-1]")
+        conda activate "${CONDA_ENV}"
+        if [[ ${{ matrix.delegate }} == "qnn" ]]; then
+            PYTHON_EXECUTABLE=python bash .ci/scripts/setup-qnn-deps.sh
+            PYTHON_EXECUTABLE=python bash .ci/scripts/build-qnn-sdk.sh
+        fi
+        PYTHON_EXECUTABLE=python bash .ci/scripts/setup-linux.sh "cmake"
+        ARTIFACTS_DIR_NAME=artifacts-to-be-uploaded/${{ matrix.model }}_${{ matrix.delegate }}
+        echo "::endgroup::"
+
+        echo "::group::Exporting ${{ matrix.delegate }} model: ${{ matrix.model }}"
+        BUILD_MODE="cmake"
+        DTYPE="fp32"
+        if [[ ${{ matrix.delegate }} == "qnn" ]]; then
+            DELEGATE_CONFIG="qnn"
+        elif [[ ${{ matrix.delegate }} == "xnnpack" ]]; then
+            DELEGATE_CONFIG="xnnpack+custom+qe"
+        fi
+
+        if [[ ${{ matrix.model }} == "llama*" ]]; then
+            # Install requirements for export_llama
+            PYTHON_EXECUTABLE=python bash examples/models/llama2/install_requirements.sh
+            # Test llama2
+            PYTHON_EXECUTABLE=python bash .ci/scripts/test_llama.sh "${{ matrix.model }}.pt" "${BUILD_MODE}" "${DTYPE}" "${DELEGATE_CONFIG}" "${ARTIFACTS_DIR_NAME}"
+        else
+            PYTHON_EXECUTABLE=python bash .ci/scripts/test_qnn_model.sh "${{ matrix.model }}"
+        fi
+        echo "::endgroup::"
+
+  test-llama-runner-qnn-linux:
+    name: test-llama-runner-qnn-linux
+    uses: pytorch/test-infra/.github/workflows/linux_job.yml@main
+    strategy:
+      matrix:
+        dtype: [fp32]
+        build-tool: [cmake]
+        mode: [qnn]
+      fail-fast: false
+    with:
+      runner: linux.2xlarge
+      docker-image: executorch-ubuntu-22.04-clang12-android
+      submodules: 'true'
+      ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+      timeout: 900
+      script: |
+        # The generic Linux job chooses to use base env, not the one setup by the image
         CONDA_ENV=$(conda env list --json | jq -r ".envs | .[-1]")
         conda activate "${CONDA_ENV}"
 
-        PYTHON_EXECUTABLE=python bash .ci/scripts/setup-linux.sh "cmake"
-        echo "Exporting model: ${{ matrix.model }}"
-        export ARTIFACTS_DIR_NAME=artifacts-to-be-uploaded/${{ matrix.model }}_${{ matrix.delegate }}
+        DTYPE=${{ matrix.dtype }}
+        BUILD_TOOL=${{ matrix.build-tool }}
+        MODE=${{ matrix.mode }}
 
-        # TODO(T197546696): Note that the following scripts/steps only work for llama. It's expected to fail for other models+delegates.
+        PYTHON_EXECUTABLE=python bash .ci/scripts/setup-qnn-deps.sh
+        PYTHON_EXECUTABLE=python bash .ci/scripts/build-qnn-sdk.sh
+
+        # Setup executorch
+        PYTHON_EXECUTABLE=python bash .ci/scripts/setup-linux.sh buck2
         # Install requirements for export_llama
         PYTHON_EXECUTABLE=python bash examples/models/llama2/install_requirements.sh
         # Test llama2
-        PYTHON_EXECUTABLE=python bash .ci/scripts/test_llama.sh "${{ matrix.model }}.pt" "cmake" "fp32" "xnnpack+custom+qe" "${ARTIFACTS_DIR_NAME}"\
+        PYTHON_EXECUTABLE=python bash .ci/scripts/test_llama.sh stories110M.pt "${BUILD_TOOL}" "${DTYPE}" "${MODE}"
 
   # Upload models to S3. The artifacts are needed not only by the device farm but also TorchChat
   upload-models:
