@@ -24,6 +24,7 @@ test_qnn_model() {
   echo "ANDROID_NDK_ROOT: $ANDROID_NDK_ROOT"
   echo "QNN_SDK_ROOT: $QNN_SDK_ROOT"
   echo "EXECUTORCH_ROOT: $EXECUTORCH_ROOT"
+  export LD_LIBRARY_PATH=$QNN_SDK_ROOT/lib/x86_64-linux-clang/
   export PYTHONPATH=$EXECUTORCH_ROOT/..
   if [[ "${MODEL_NAME}" == "dl3" ]]; then
     "${PYTHON_EXECUTABLE}" -m examples.qualcomm.scripts.deeplab_v3 -b cmake-out-android -m SM8550 --compile_only --download
