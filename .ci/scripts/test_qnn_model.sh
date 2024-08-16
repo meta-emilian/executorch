@@ -9,6 +9,7 @@ set -ex
 
 # shellcheck source=/dev/null
 source "$(dirname "${BASH_SOURCE[0]}")/utils.sh"
+source "./build-qnn-sdk.sh"
 
 MODEL_NAME=$1
 if [[ -z "${MODEL_NAME:-}" ]]; then
